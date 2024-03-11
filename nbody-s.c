@@ -2,7 +2,7 @@
  * Runs a simulation of the n-body problem in 3D.
  * 
  * To compile the program:
- *   gcc -Wall -O3 -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
+ *   gcc -Wall -Ofast -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
  * 
  * To run the program:
  *   ./nbody-s time-step total-time outputs-per-body input.npy output.npy
@@ -165,7 +165,7 @@ int main(int argc, const char* argv[]) {
     for (size_t step = 0; step < num_steps; step++) {
         // Compute the force on each body
         // superpositionPrinciple(double massi, double massj, double xi, double xj, double yi, double yj,double zi, double zj, size_t n)
-        superpositionPrinciple(
+        superpositionPrinciple( input->data[0], input->data[0], input->data[1], input->data[1], input->data[2], input->data[2], input->data[3], input->data[3], n);
 
         //Periodically copy the position to the output matrix
         if (step % output_steps == 0) {
@@ -175,6 +175,17 @@ int main(int argc, const char* argv[]) {
                 output->data[(step/output_steps)*3*n+i*3+2] = input->data[i*7+3];
             }
         }
+
+        if (num_steps % output_steps != 0) {
+            //Save positions to reow "num_output-1" of output 
+            for (size_t i = 0; i < n; i++) {
+                output->data[(num_outputs-1)*3*n+i*3] = input->data[i*7+1];
+                output->data[(num_outputs-1)*3*n+i*3+1] = input->data[i*7+2];
+                output->data[(num_outputs-1)*3*n+i*3+2] = input->data[i*7+3];
+            }
+        }
+
+
         
     }
     // get the end and computation time
@@ -183,9 +194,11 @@ int main(int argc, const char* argv[]) {
     printf("%f secs\n", time);
 
     // save results
-    //matrix_to_npy_path(argv[5], output);
+    matrix_to_npy_path(argv[5], output);
 
     // cleanup
+    matrix_free(input);
+    matrix_free(output);
 
 
     return 0;
