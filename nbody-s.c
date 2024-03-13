@@ -42,16 +42,16 @@
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
-double lawOfGravity(double massi , double massj , double xi , double xj , double yi , double yj \
-                    , double zi , double zj){
-    double delta_x = xj - xi;
-    double delta_y = yj - yi;
-    double delta_z = zj - zi;
-    double r = sqrt(delta_x*delta_x + delta_y*delta_y + delta_z*delta_z + SOFTENING);
-    double rSquared = delta_x*delta_x + delta_y*delta_y + delta_z*delta_z + SOFTENING; 
-    double force = G * massi * massj / rSquared;
-    return force;
-}
+// double lawOfGravity(double massi , double massj , double xi , double xj , double yi , double yj 
+//                     , double zi , double zj){
+//     double delta_x = xj - xi;
+//     double delta_y = yj - yi;
+//     double delta_z = zj - zi;
+//     double r = sqrt(delta_x*delta_x + delta_y*delta_y + delta_z*delta_z + SOFTENING);
+//     double rSquared = r*r; 
+//     double force = G * ((massi * massj) / rSquared);
+//     return force;
+// }
 
 
 double* superpositionPrinciple(double massi, double massj, double xi, double xj, double yi, double yj,
@@ -64,7 +64,8 @@ double* superpositionPrinciple(double massi, double massj, double xi, double xj,
     }
 
     // Calculate distance squared efficiently
-    double distance = pow((xi - xj) * (xi - xj) + (yi - yj) * (yi - yj) + (zi - zj) * (zi - zj) + SOFTENING,3);
+    const double distance = sqrt((xi - xj) * (xi - xj) + (yi - yj) * (yi - yj) + (zi - zj) * (zi - zj) + SOFTENING);
+    const double distanceCubed = distance * distance * distance;
 
 
     // Calculate superpositions
@@ -73,48 +74,44 @@ double* superpositionPrinciple(double massi, double massj, double xi, double xj,
     superpositions[2] = 0.0;
 
     for (size_t j = 0; j <= n; ++j) {
-        superpositions[0] += massj * fabs(xi - xj) / (distance);
-        superpositions[1] += massj * fabs(yi - yj) / (distance);
-        superpositions[2] += massj * fabs(zi - zj) / (distance);
+        superpositions[0] += massj * (xj - xi) / (distanceCubed);
+        superpositions[1] += massj * (yj - yi) / (distanceCubed);
+        superpositions[2] += massj * (zj - zi) / (distanceCubed);
     }
 
-    superpositions[0] *= G * massi; // Apply gravitational constant
-    superpositions[1] *= G * massi;
-    superpositions[2] *= G * massi;
+    superpositions[0] *= G; // Apply gravitational constant
+    superpositions[1] *= G;
+    superpositions[2] *= G;
     return superpositions;
 }
 
 
-double* computeAcceleration(double* superpostions, double massi)
-{
-    double* acceleration = malloc(3 * sizeof(double));
-    if (acceleration == NULL) {
-        // Handle memory allocation failure (e.g., return NULL)
-        return NULL;
-    }
-    acceleration[0] = superpostions[0] / massi;
-    acceleration[1] = superpostions[1] / massi;
-    acceleration[2] = superpostions[2] / massi;
-    return acceleration;
-}
+// double* computeAcceleration(double* superpostions, double massi)
+// {
+//     double* acceleration = malloc(3 * sizeof(double));
+//     if (acceleration == NULL) {
+//         // Handle memory allocation failure (e.g., return NULL)
+//         return NULL;
+//     }
+//     acceleration[0] = superpostions[0];
+//     acceleration[1] = superpostions[1];
+//     acceleration[2] = superpostions[2];
+//     return acceleration;
+// }
 
-double* computeVelocity(double* acceleration, double time_step, double massi, double* superpositions) {
+double* computeVelocity(double time_step, double massi, double* accelartion, double* velocity) {
   // Allocate memory for the velocity array (3 elements for X, Y, Z)
-  double* velocity = malloc(3 * sizeof(double));
-  if (velocity == NULL) {
-    // Handle memory allocation failure (e.g., return NULL)
-    return NULL;
-  }
-
+ 
+ 
   // Half-step acceleration update
-  velocity[0] = acceleration[0] * time_step / 2.0;
-  velocity[1] = acceleration[1] * time_step / 2.0;
-  velocity[2] = acceleration[2] * time_step / 2.0;
+  velocity[0] = accelartion[0] * time_step;
+  velocity[1] = accelartion[1] * time_step;
+  velocity[2] = accelartion[2] * time_step;
 
   // Full-step velocity update (using superpositions)
-  velocity[0] += superpositions[0] / massi * time_step;
-  velocity[1] += superpositions[1] / massi * time_step;
-  velocity[2] += superpositions[2] / massi * time_step;
+//   velocity[0] += superpositions[0] / massi * time_step;
+//   velocity[1] += superpositions[1] / massi * time_step;
+//   velocity[2] += superpositions[2] / massi * time_step;
 
   return velocity;
 }
@@ -159,35 +156,56 @@ int main(int argc, const char* argv[]) {
         output->data[i*3+1] = input->data[i*7+2];
         output->data[i*3+2] = input->data[i*7+3];
     }
-
+    Matrix* inputCopy = matrix_copy(input); 
     //run the simulation
-
-    for (size_t step = 0; step < num_steps; step++) {
-        // Compute the force on each body
-        // superpositionPrinciple(double massi, double massj, double xi, double xj, double yi, double yj,double zi, double zj, size_t n)
-        superpositionPrinciple( input->data[0], input->data[0], input->data[1], input->data[1], input->data[2], input->data[2], input->data[3], input->data[3], n);
-
-        //Periodically copy the position to the output matrix
-        if (step % output_steps == 0) {
-            for (size_t i = 0; i < n; i++) {
-                output->data[(step/output_steps)*3*n+i*3] = input->data[i*7+1];
-                output->data[(step/output_steps)*3*n+i*3+1] = input->data[i*7+2];
-                output->data[(step/output_steps)*3*n+i*3+2] = input->data[i*7+3];
+    //MAKE INPUT DATA USABLE BY COPYING IT TO A NEW ARRAY
+    
+    //HAVE INDEXED I AND J LOOPS TO CALL SUPERPOSITION PRINCIPLE
+    //CALL SUPERPOSITION PRINCIPLE TO GET THE FORCE
+    //CALL COMPUTE VELOCITY TO GET THE VELOCITY
+    //UPDATE THE POSITION OF EACH BODY
+    //PERIODICALLY COPY THE POSITION TO THE OUTPUT MATRIX
+    //if i == j then skip the iteration
+    //FREE THE MEMORY
+    d
+    for (size_t i = 0; i < num_steps; i++) {
+        for (size_t j = 0; j < n; j++) {
+            double massi = input->data[j*7];
+            double massj = input->data[i*7]; 
+            double xi = input->data[j*7+1];
+            double xj = input->data[i*7+1];
+            double yi = input->data[j*7+2];
+            double yj = input->data[i*7+2];
+            double zi = input->data[j*7+3];
+            double zj = input->data[i*7+3];
+            double* superpositions = superpositionPrinciple(massi, massj, xi, xj, yi, yj, zi, zj, n);
+            double* velocity = computeVelocity(time_step, massi, superpositions, velocity);
+            inputCopy->data[j*7+1] += velocity[0];
+            inputCopy->data[j*7+2] += velocity[1];
+            inputCopy->data[j*7+3] += velocity[2];
+            inputCopy->data[i*7+1] += velocity[0];
+            inputCopy->data[i*7+2] += velocity[1];
+            inputCopy->data[i*7+3] += velocity[2];
+            if (i % output_steps == 0) {
+                output->data[i*3*n+j*3] = inputCopy->data[j*7+1];
+                output->data[i*3*n+j*3+1] = inputCopy->data[j*7+2];
+                output->data[i*3*n+j*3+2] = inputCopy->data[j*7+3];
             }
-        }
 
-        if (num_steps % output_steps != 0) {
-            //Save positions to reow "num_output-1" of output 
-            for (size_t i = 0; i < n; i++) {
-                output->data[(num_outputs-1)*3*n+i*3] = input->data[i*7+1];
-                output->data[(num_outputs-1)*3*n+i*3+1] = input->data[i*7+2];
-                output->data[(num_outputs-1)*3*n+i*3+2] = input->data[i*7+3];
-            }
         }
+    }
+    if (num_steps % output_steps != 0) {
+        //Save positions to reow "num_output-1" of output 
+        for (size_t i = 0; i < n; i++) {
+            output->data[(num_outputs-1)*3*n+i*3] = input->data[i*7+1];
+            output->data[(num_outputs-1)*3*n+i*3+1] = input->data[i*7+2];
+            output->data[(num_outputs-1)*3*n+i*3+2] = input->data[i*7+3];
+        }
+    }
 
 
         
-    }
+    
     // get the end and computation time
     clock_gettime(CLOCK_MONOTONIC, &end);
     double time = get_time_diff(&start, &end);
