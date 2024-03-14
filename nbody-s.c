@@ -54,66 +54,24 @@
 // }
 
 
-double* superpositionPrinciple(double massi, double massj, double xi, double xj, double yi, double yj,
-                             double zi, double zj, size_t n) {
-    // Allocate memory for the return array (3 elements for X, Y, Z)
-    double* superpositions = malloc(3 * sizeof(double));
-    if (superpositions == NULL) {
-        // Handle memory allocation failure (e.g., return NULL)
-        return NULL;
-    }
-
-    // Calculate distance squared efficiently
-    const double distance = sqrt((xi - xj) * (xi - xj) + (yi - yj) * (yi - yj) + (zi - zj) * (zi - zj) + SOFTENING);
-    const double distanceCubed = distance * distance * distance;
-
+double superpositionPrinciple(double massi, double massj,double delta ,size_t n, double euclideanDistance) {
+    
+    const double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
 
     // Calculate superpositions
-    superpositions[0] = 0.0;
-    superpositions[1] = 0.0;
-    superpositions[2] = 0.0;
+    double superposition = 0;
 
     for (size_t j = 0; j <= n; ++j) {
-        superpositions[0] += massj * (xj - xi) / (distanceCubed);
-        superpositions[1] += massj * (yj - yi) / (distanceCubed);
-        superpositions[2] += massj * (zj - zi) / (distanceCubed);
+        superposition += massj * (delta) / (distanceCubed);
     }
-
-    superpositions[0] *= G; // Apply gravitational constant
-    superpositions[1] *= G;
-    superpositions[2] *= G;
-    return superpositions;
+    superposition *= G; // Apply gravitational constant
+    return superposition;
 }
 
 
-// double* computeAcceleration(double* superpostions, double massi)
-// {
-//     double* acceleration = malloc(3 * sizeof(double));
-//     if (acceleration == NULL) {
-//         // Handle memory allocation failure (e.g., return NULL)
-//         return NULL;
-//     }
-//     acceleration[0] = superpostions[0];
-//     acceleration[1] = superpostions[1];
-//     acceleration[2] = superpostions[2];
-//     return acceleration;
-// }
-
-double* computeVelocity(double time_step, double massi, double* accelartion, double* velocity) {
-  // Allocate memory for the velocity array (3 elements for X, Y, Z)
- 
- 
+double computeVelocity(double time_step, double accelartion, double velocity) {
   // Half-step acceleration update
-  velocity[0] = accelartion[0] * time_step;
-  velocity[1] = accelartion[1] * time_step;
-  velocity[2] = accelartion[2] * time_step;
-
-  // Full-step velocity update (using superpositions)
-//   velocity[0] += superpositions[0] / massi * time_step;
-//   velocity[1] += superpositions[1] / massi * time_step;
-//   velocity[2] += superpositions[2] / massi * time_step;
-
-  return velocity;
+  return velocity + time_step * accelartion;
 }
 //run the simulation
 
@@ -167,25 +125,41 @@ int main(int argc, const char* argv[]) {
     //PERIODICALLY COPY THE POSITION TO THE OUTPUT MATRIX
     //if i == j then skip the iteration
     //FREE THE MEMORY
-    d
+    double velocityx = input->data[4];
+    double velocityy = input->data[5];
+    double velocityz = input->data[6];
+    double accelerationX;
+    double accelerationY;
+    double accelerationZ;
     for (size_t i = 0; i < num_steps; i++) {
+        if ( i % output_steps == 0) {
+            for (size_t j = 0; j < n; j++) {
+                output->data[i*3*n+j*3] = input->data[j*7+1];
+                output->data[i*3*n+j*3+1] = input->data[j*7+2];
+                output->data[i*3*n+j*3+2] = input->data[j*7+3];
+            }
+        }
         for (size_t j = 0; j < n; j++) {
             double massi = input->data[j*7];
             double massj = input->data[i*7]; 
-            double xi = input->data[j*7+1];
-            double xj = input->data[i*7+1];
-            double yi = input->data[j*7+2];
-            double yj = input->data[i*7+2];
-            double zi = input->data[j*7+3];
-            double zj = input->data[i*7+3];
-            double* superpositions = superpositionPrinciple(massi, massj, xi, xj, yi, yj, zi, zj, n);
-            double* velocity = computeVelocity(time_step, massi, superpositions, velocity);
-            inputCopy->data[j*7+1] += velocity[0];
-            inputCopy->data[j*7+2] += velocity[1];
-            inputCopy->data[j*7+3] += velocity[2];
-            inputCopy->data[i*7+1] += velocity[0];
-            inputCopy->data[i*7+2] += velocity[1];
-            inputCopy->data[i*7+3] += velocity[2];
+            double xi = input->data[i*7+1];
+            double xj = input->data[j*7+1];
+            double yi = input->data[i*7+2];
+            double yj = input->data[j*7+2];
+            double zi = input->data[i*7+3];
+            double zj = input->data[j*7+3];
+            double euclideanDistance = sqrt((xj - xi) * (xj - xi) + (yj - yi) * (yj - yi) + (zj - zi) * (zj - zi) + SOFTENING);
+            accelerationX = superpositionPrinciple(massi, massj,xj - xi, n, euclideanDistance);
+            accelerationY = superpositionPrinciple(massi, massj,yj - yi, n, euclideanDistance);
+            accelerationZ = superpositionPrinciple(massi, massj,zj - zi, n, euclideanDistance);
+            velocityx = computeVelocity(time_step, accelerationX, velocityx);
+            velocityy = computeVelocity(time_step, accelerationY, velocityy);
+            velocityz = computeVelocity(time_step, accelerationZ, velocityz);
+            inputCopy->data[j*7+1] += velocityx;
+            inputCopy->data[j*7+2] += velocityy;
+            inputCopy->data[j*7+3] += velocityz;
+        
+        
             if (i % output_steps == 0) {
                 output->data[i*3*n+j*3] = inputCopy->data[j*7+1];
                 output->data[i*3*n+j*3+1] = inputCopy->data[j*7+2];
@@ -216,6 +190,7 @@ int main(int argc, const char* argv[]) {
 
     // cleanup
     matrix_free(input);
+    matrix_free(inputCopy);
     matrix_free(output);
 
 
