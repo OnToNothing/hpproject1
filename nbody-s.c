@@ -156,18 +156,24 @@ int main(int argc, const char *argv[])
             double accelerationZ = 0;
             for (size_t j = 0; j < n; j++)
             {
-                double massi = inputCopy->data[i * 7];
+                if (i == j)
+                {
+                    continue;
+                }
+                //double massi = inputCopy->data[i * 7];
                 double massj = inputCopy->data[j * 7];
-
                 double xj = inputCopy->data[j * 7 + 1];
                 double yj = inputCopy->data[j * 7 + 2];
                 double zj = inputCopy->data[j * 7 + 3];
-                double euclideanDistance = sqrt((xj - xi) * (xj - xi) + (yj - yi) * (yj - yi) + (zj - zi) * (zj - zi) + SOFTENING);
+                double deltaX = xj - xi;
+                double deltaY = yj - yi;
+                double deltaZ = zj - zi;
+                double euclideanDistance = 1 / sqrt((deltaX) * (deltaX) + (deltaY) * (deltaY) + (deltaZ) * (deltaZ) + SOFTENING);
                 const double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
-                double factor = G * massj / distanceCubed;
-                accelerationX += factor * (xj - xi);
-                accelerationY += factor * (yj - yi);
-                accelerationZ += factor * (zj - zi);
+                double factor = G * massj * distanceCubed;
+                accelerationX += factor * (deltaX);
+                accelerationY += factor * (deltaY);
+                accelerationZ += factor * (deltaZ);
             }
             inputCopy->data[i * 7 + 4] += accelerationX * time_step;
             inputCopy->data[i * 7 + 5] += accelerationY * time_step;
