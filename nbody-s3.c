@@ -42,6 +42,23 @@
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
+// calulate the force between two bodies
+void forceCalulation(double* f, const double* m1, const double* m2) {
+    double dx = m2[0] - m1[0], dy = m2[1] - m1[1], dz = m2[2] - m1[2];
+    double r2 = dx*dx + dy*dy + dz*dz + SOFTENING;
+    double r = sqrt(r2);
+    double mag = G * m1[3] * m2[3] / r2 / r;
+    f[0] = mag * dx / r;
+    f[1] = mag * dy / r;
+    f[2] = mag * dz / r;
+}
+
+double totalForce[3] = {0.0, 0.0, 0.0}; // Total force on the body
+
+// ci
+
+
+
 int main(int argc, const char* argv[]) {
     // parse arguments
     if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }

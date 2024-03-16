@@ -52,16 +52,6 @@
 //     double force = G * ((massi * massj) / rSquared);
 //     return force;
 // }
-
-double superpositionPrinciple(double massi, double massj, double delta, size_t n, double euclideanDistance)
-{
-
-    const double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
-    double superposition = massj * (delta) / (distanceCubed);
-    superposition *= G; // Apply gravitational constant
-    return superposition;
-}
-
 // run the simulation
 
 int main(int argc, const char *argv[])
