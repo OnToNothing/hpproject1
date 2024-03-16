@@ -42,6 +42,86 @@
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
+
+// gravitational force between two bodies 
+void forceCalulation(double* f, const double* m1, const double* m2) {
+    double dx = m2[1] - m1[1]; // x position difference
+    double dy = m2[2] - m1[2]; // y position difference
+    double dz = m2[3] - m1[3]; // z position difference
+    double r2 = dx*dx + dy*dy + dz*dz + SOFTENING;
+    double r = sqrt(r2);
+    double mag = G * m1[0] * m2[0] / r2 / r; // m1[0] and m2[0] are the masses
+    f[0] = mag * dx / r;
+    f[1] = mag * dy / r;
+    f[2] = mag * dz / r;
+}
+
+double totalForce[3] = {0.0, 0.0, 0.0}; // Total force on the body
+
+// superposition principle
+
+void superpositionPrinciple(double* forces, const Matrix* input, size_t number_of_bodies) {
+    // Assuming forces is a pre-allocated array for cumulative forces on each body
+    memset(forces, 0, sizeof(double) * 3 * number_of_bodies); // Reset all forces to zero
+
+    for (size_t i = 0; i < number_of_bodies; i++) {
+        for (size_t j = 0; j < i; j++) { // Ensuring force calculation only for j < i
+            double tempForce[3] = {0.0, 0.0, 0.0};
+            forceCalulation(tempForce, input->data + i*7, input->data + j*7);
+
+            // Apply the force from j to i
+            forces[i*3 + 0] += tempForce[0];
+            forces[i*3 + 1] += tempForce[1];
+            forces[i*3 + 2] += tempForce[2];
+
+            // Apply the opposite force from i to j, using Newton's Third Law
+            forces[j*3 + 0] -= tempForce[0];
+            forces[j*3 + 1] -= tempForce[1];
+            forces[j*3 + 2] -= tempForce[2];
+        }
+    }
+}
+
+
+// calculate the acceleration 
+
+void calculateAcceleration(double* acc, const double* m, const Matrix* input, size_t number_of_bodies) {
+    double f[3] = {0.0, 0.0, 0.0}; // Reset net force to zero before calculation
+    superpositionPrinciple(f, m, input, number_of_bodies);
+    // Assuming m[3] is the mass of the body and it's not zero
+    if (m[3] != 0) {
+        acc[0] = f[0] / m[3]; // Acceleration in x-axis
+        acc[1] = f[1] / m[3]; // Acceleration in y-axis
+        acc[2] = f[2] / m[3]; // Acceleration in z-axis
+    } else {
+        // Handle the case where mass is zero or not provided to avoid division by zero
+        acc[0] = acc[1] = acc[2] = 0.0;
+    }
+}
+
+// calculate the velocity
+
+double calculateFutureVelocityX(double vx_current, double ax, double delta_t) {
+    // Calculate the future velocity along the x-axis
+    double vx_future = vx_current + ax * delta_t;
+    return vx_future;
+}
+
+double calculateFutureVelocityY(double vy_current, double ay, double delta_t) {
+    // Calculate the future velocity along the y-axis
+    double vy_future = vy_current + ay * delta_t;
+    return vy_future;
+}
+
+double calculateFutureVelocityZ(double vz_current, double az, double delta_t) {
+    // Calculate the future velocity along the z-axis
+    double vz_future = vz_current + az * delta_t;
+    return vz_future;
+}
+
+
+
+
 int main(int argc, const char* argv[]) {
     // parse arguments
     if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }
