@@ -23,7 +23,7 @@ echo "Starting serial simulation for Newton's Second Law: Random 25"
 ./nbody-s 0.1 500000 1000 examples/random25.npy output/serial/2ndLaw/random25Actual.npy
 
 echo "Starting serial simulation for Newton's Second Law: Random 100"
-./nbody-s 0.01 1000 1000 examples/random100.npy output/serial/2ndLaw/random100Actual.npy
+./nbody-s 0.01 10 1000 examples/random100.npy output/serial/2ndLaw/random100Actual.npy
 
 echo "Starting serial simulation for Newton's Second Law: Random 1000"
 ./nbody-s 0.01 1000 1000 examples/random1000.npy output/serial/2ndLaw/random1000Actual.npy

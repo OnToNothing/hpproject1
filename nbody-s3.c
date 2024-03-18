@@ -81,6 +81,10 @@ void updateForces(body* bodies, size_t n) {
     }
 }
 
+
+
+
+
 int main(int argc, const char *argv[])
 {
     // parse arguments
@@ -179,6 +183,7 @@ int main(int argc, const char *argv[])
 
 size_t outputRow = 1;
 for (size_t step = 1; step < num_steps; step++) {
+
     // Force update based on new positions
     updateForces(bodies, n);
 
@@ -189,14 +194,14 @@ for (size_t step = 1; step < num_steps; step++) {
             bodies[i].velocity[d] +=  newAcceleration * time_step;
         }
     }
-
-    for (size_t i = 0; i < n; i++) {
+    
+        for (size_t i = 0; i < n; i++) {
         for (size_t d = 0; d < 3; d++) {
             // Update position based on velocity
             bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
             }
     }
-
+ 
     // Save positions to the output matrix at specified intervals
     if (step % output_steps == 0 || step == num_steps - 1) {
         for (size_t i = 0; i < n; i++) {
