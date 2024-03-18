@@ -24,7 +24,7 @@
  * 
  * See the PDF for implementation details and other requirements.
  * 
- * AUTHORS:
+ * AUTHORS: Yousuf Kanan and Derek ALmon
  */
 
 #include <stdbool.h>
@@ -32,9 +32,16 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-
+#include <math.h>
 #include "matrix.h"
 #include "util.h"
+
+typedef struct {
+     double position[3];
+     double velocity[3];
+     double force[3];
+     double mass;
+} body;
 
 // Gravitational Constant in N m^2 / kg^2 or m^3 / kg / s^2
 #define G 6.6743015e-11
@@ -42,102 +49,82 @@
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
+void calculate_force(body* body1, body* body2) {
+    double dx = body2->position[0] - body1->position[0];
+    double dy = body2->position[1] - body1->position[1];
+    double dz = body2->position[2] - body1->position[2];
+    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+    double dist = sqrt(dist_sq);
+    double force_mag = G * body1->mass * body2->mass / dist_sq;
 
-// gravitational force between two bodies 
-void forceCalulation(double* f, const double* m1, const double* m2) {
-    double dx = m2[1] - m1[1]; // x position difference
-    double dy = m2[2] - m1[2]; // y position difference
-    double dz = m2[3] - m1[3]; // z position difference
-    double r2 = dx*dx + dy*dy + dz*dz + SOFTENING;
-    double r = sqrt(r2);
-    double mag = G * m1[0] * m2[0] / r2 / r; // m1[0] and m2[0] are the masses
-    f[0] = mag * dx / r;
-    f[1] = mag * dy / r;
-    f[2] = mag * dz / r;
+    double fx = force_mag * dx / dist;
+    double fy = force_mag * dy / dist;
+    double fz = force_mag * dz / dist;
+
+    body1->force[0] += fx;
+    body1->force[1] += fy;
+    body1->force[2] += fz;
+    body2->force[0] -= fx;
+    body2->force[1] -= fy;
+    body2->force[2] -= fz;
 }
 
-double totalForce[3] = {0.0, 0.0, 0.0}; // Total force on the body
+void updateForces(body* bodies, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        bodies[i].force[0] = bodies[i].force[1] = bodies[i].force[2] = 0.0;
+    }
 
-// superposition principle
-
-void superpositionPrinciple(double* forces, const Matrix* input, size_t number_of_bodies) {
-    // Assuming forces is a pre-allocated array for cumulative forces on each body
-    memset(forces, 0, sizeof(double) * 3 * number_of_bodies); // Reset all forces to zero
-
-    for (size_t i = 0; i < number_of_bodies; i++) {
-        for (size_t j = 0; j < i; j++) { // Ensuring force calculation only for j < i
-            double tempForce[3] = {0.0, 0.0, 0.0};
-            forceCalulation(tempForce, input->data + i*7, input->data + j*7);
-
-            // Apply the force from j to i
-            forces[i*3 + 0] += tempForce[0];
-            forces[i*3 + 1] += tempForce[1];
-            forces[i*3 + 2] += tempForce[2];
-
-            // Apply the opposite force from i to j, using Newton's Third Law
-            forces[j*3 + 0] -= tempForce[0];
-            forces[j*3 + 1] -= tempForce[1];
-            forces[j*3 + 2] -= tempForce[2];
+    for (size_t i = 0; i < n - 1; i++) {
+        for (size_t j = i + 1; j < n; j++) {
+            calculate_force(&bodies[i], &bodies[j]);
         }
     }
 }
 
-
-// calculate the acceleration 
-
-void calculateAcceleration(double* acc, const double* m, const Matrix* input, size_t number_of_bodies) {
-    double f[3] = {0.0, 0.0, 0.0}; // Reset net force to zero before calculation
-    superpositionPrinciple(f, m, input, number_of_bodies);
-    // Assuming m[3] is the mass of the body and it's not zero
-    if (m[3] != 0) {
-        acc[0] = f[0] / m[3]; // Acceleration in x-axis
-        acc[1] = f[1] / m[3]; // Acceleration in y-axis
-        acc[2] = f[2] / m[3]; // Acceleration in z-axis
-    } else {
-        // Handle the case where mass is zero or not provided to avoid division by zero
-        acc[0] = acc[1] = acc[2] = 0.0;
-    }
-}
-
-// calculate the velocity
-
-double calculateFutureVelocityX(double vx_current, double ax, double delta_t) {
-    // Calculate the future velocity along the x-axis
-    double vx_future = vx_current + ax * delta_t;
-    return vx_future;
-}
-
-double calculateFutureVelocityY(double vy_current, double ay, double delta_t) {
-    // Calculate the future velocity along the y-axis
-    double vy_future = vy_current + ay * delta_t;
-    return vy_future;
-}
-
-double calculateFutureVelocityZ(double vz_current, double az, double delta_t) {
-    // Calculate the future velocity along the z-axis
-    double vz_future = vz_current + az * delta_t;
-    return vz_future;
-}
-
-
-
-
-int main(int argc, const char* argv[]) {
+int main(int argc, const char *argv[])
+{
     // parse arguments
-    if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }
+    if (argc != 6 && argc != 7)
+    {
+        fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]);
+        return 1;
+    }
     double time_step = atof(argv[1]), total_time = atof(argv[2]);
-    if (time_step <= 0 || total_time <= 0 || time_step > total_time) { fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n"); return 1; }
+    if (time_step <= 0 || total_time <= 0 || time_step > total_time)
+    {
+        fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n");
+        return 1;
+    }
     size_t num_outputs = atoi(argv[3]);
-    if (num_outputs <= 0) { fprintf(stderr, "outputs-per-body must be positive\n"); return 1; }
-    Matrix* input = matrix_from_npy_path(argv[4]);
-    if (input == NULL) { perror("error reading input"); return 1; }
-    if (input->cols != 7) { fprintf(stderr, "input.npy must have 7 columns\n"); return 1; }
+    if (num_outputs <= 0)
+    {
+        fprintf(stderr, "outputs-per-body must be positive\n");
+        return 1;
+    }
+    Matrix *input = matrix_from_npy_path(argv[4]);
+    if (input == NULL)
+    {
+        perror("error reading input");
+        return 1;
+    }
+    if (input->cols != 7)
+    {
+        fprintf(stderr, "input.npy must have 7 columns\n");
+        return 1;
+    }
     size_t n = input->rows;
-    if (n == 0) { fprintf(stderr, "input.npy must have at least 1 row\n"); return 1; }
+    if (n == 0)
+    {
+        fprintf(stderr, "input.npy must have at least 1 row\n");
+        return 1;
+    }
     size_t num_steps = (size_t)(total_time / time_step + 0.5);
-    if (num_steps < num_outputs) { num_outputs = 1; }
-    size_t output_steps = num_steps/num_outputs;
-    num_outputs = (num_steps+output_steps-1)/output_steps;
+    if (num_steps < num_outputs)
+    {
+        num_outputs = 1;
+    }
+    size_t output_steps = num_steps / num_outputs;
+    num_outputs = (num_steps + output_steps - 1) / output_steps;
 
     // variables available now:
     //   time_step    number of seconds between each time point
@@ -148,10 +135,81 @@ int main(int argc, const char* argv[]) {
     //   input        n-by-7 Matrix of input data
     //   n            number of bodies to simulate
 
+    
+    
+
+    
+    
+
     // start the clock
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
+    // allocate output matrix as a 3n-by-num_outputs matrix
+    Matrix *output = matrix_create_raw(num_outputs, 3 * n);
+
+    body* bodies = (body*)malloc(sizeof(body) * n);
+    for (size_t i = 0; i < n; i++) {
+        bodies[i].position[0] = input->data[i * 7 + 1];
+        bodies[i].position[1] = input->data[i * 7 + 2];
+        bodies[i].position[2] = input->data[i * 7 + 3];
+        bodies[i].velocity[0] = input->data[i * 7 + 4];
+        bodies[i].velocity[1] = input->data[i * 7 + 5];
+        bodies[i].velocity[2] = input->data[i * 7 + 6];
+        bodies[i].mass = input->data[i * 7 + 0];
+    }
+
+    
+
+    // make row 0 the iniitial position
+    for (size_t i = 0; i < n; i++)
+    {
+        output->data[i * 3] = input->data[i * 7 + 1];
+        output->data[i * 3 + 1] = input->data[i * 7 + 2];
+        output->data[i * 3 + 2] = input->data[i * 7 + 3];
+        
+    }
+    
+for (size_t i = 0; i < n; i++) {
+    for (size_t d = 0; d < 3; d++) {
+        // Convert initial forces to accelerations and apply half the timestep's acceleration to the velocity
+        double acceleration = bodies[i].force[d] / bodies[i].mass;
+        bodies[i].velocity[d] += acceleration * (time_step / 2.0);
+    }
+}
+
+size_t outputIndex = 0;
+for (size_t step = 0; step < num_steps; step++) {
+    for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            // Update position based on velocity
+            bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
+            }
+    }
+
+    // Force update based on new positions
+    updateForces(bodies, n);
+
+    // Final velocity update using the newly calculated forces (accelerations)
+    for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            double newAcceleration = bodies[i].force[d] / bodies[i].mass;
+            bodies[i].velocity[d] += newAcceleration * (time_step / 2.0);
+        }
+    }
+
+    // Save positions to the output matrix at specified intervals
+    if (step % output_steps == 0 || step == num_steps - 1) {
+        for (size_t i = 0; i < n; i++) {
+            output->data[outputIndex + i * 3 + 0] = bodies[i].position[0];
+            output->data[outputIndex + i * 3 + 1] = bodies[i].position[1];
+            output->data[outputIndex + i * 3 + 2] = bodies[i].position[2];
+        }
+        outputIndex += 3 * n;
+    }
+}
+
+        
 
     // get the end and computation time
     clock_gettime(CLOCK_MONOTONIC, &end);
@@ -159,10 +217,12 @@ int main(int argc, const char* argv[]) {
     printf("%f secs\n", time);
 
     // save results
-    //matrix_to_npy_path(argv[5], output);
+    matrix_to_npy_path(argv[5], output);
 
     // cleanup
-
+    matrix_free(input);
+    matrix_free(output);
+    free(bodies);
 
     return 0;
 }

@@ -2,7 +2,7 @@
  * Runs a simulation of the n-body problem in 3D.
  *
  * To compile the program:
- *   gcc -Wall -Ofast -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
+ *   gcc-13 -Wall -Ofast -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
  *
  * To run the program:
  *   ./nbody-s time-step total-time outputs-per-body input.npy output.npy
@@ -42,62 +42,25 @@
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
-// double lawOfGravity(double massi , double massj , double xi , double xj , double yi , double yj
-//                     , double zi , double zj){
-//     double delta_x = xj - xi;
-//     double delta_y = yj - yi;
-//     double delta_z = zj - zi;
-//     double r = sqrt(delta_x*delta_x + delta_y*delta_y + delta_z*delta_z + SOFTENING);
-//     double rSquared = r*r;
-//     double force = G * ((massi * massj) / rSquared);
-//     return force;
-// }
-// run the simulation
-
 int main(int argc, const char *argv[])
 {
-    // parse arguments
-    if (argc != 6 && argc != 7)
-    {
-        fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]);
-        return 1;
-    }
+    if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }
     double time_step = atof(argv[1]), total_time = atof(argv[2]);
-    if (time_step <= 0 || total_time <= 0 || time_step > total_time)
-    {
-        fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n");
-        return 1;
-    }
+    if (time_step <= 0 || total_time <= 0 || time_step > total_time) { fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n"); return 1; }
     size_t num_outputs = atoi(argv[3]);
-    if (num_outputs <= 0)
-    {
-        fprintf(stderr, "outputs-per-body must be positive\n");
-        return 1;
-    }
-    Matrix *input = matrix_from_npy_path(argv[4]);
-    if (input == NULL)
-    {
-        perror("error reading input");
-        return 1;
-    }
-    if (input->cols != 7)
-    {
-        fprintf(stderr, "input.npy must have 7 columns\n");
-        return 1;
-    }
+    if (num_outputs <= 0) { fprintf(stderr, "outputs-per-body must be positive\n"); return 1; }
+    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity()/2; // TODO: you may choose to adjust the default value
+    if (num_threads <= 0) { fprintf(stderr, "num-threads must be positive\n"); return 1; }
+    Matrix* input = matrix_from_npy_path(argv[4]);
+    if (input == NULL) { perror("error reading input"); return 1; }
+    if (input->cols != 7) { fprintf(stderr, "input.npy must have 7 columns\n"); return 1; }
     size_t n = input->rows;
-    if (n == 0)
-    {
-        fprintf(stderr, "input.npy must have at least 1 row\n");
-        return 1;
-    }
+    if (n == 0) { fprintf(stderr, "input.npy must have at least 1 row\n"); return 1; }
+    if (num_threads > n) { num_threads = n; }
     size_t num_steps = (size_t)(total_time / time_step + 0.5);
-    if (num_steps < num_outputs)
-    {
-        num_outputs = 1;
-    }
-    size_t output_steps = num_steps / num_outputs;
-    num_outputs = (num_steps + output_steps - 1) / output_steps;
+    if (num_steps < num_outputs) { num_outputs = 1; }
+    size_t output_steps = num_steps/num_outputs;
+    num_outputs = (num_steps+output_steps-1)/output_steps;
 
     // variables available now:
     //   time_step    number of seconds between each time point
@@ -158,7 +121,7 @@ int main(int argc, const char *argv[])
                 double deltaX = xj - xi;
                 double deltaY = yj - yi;
                 double deltaZ = zj - zi;
-                double euclideanDistance = 1 / sqrt((deltaX) * (deltaX) + (deltaY) * (deltaY) + (deltaZ) * (deltaZ) + SOFTENING);
+                double euclideanDistance = 1 / sqrt(SOFTENING + (deltaX) * (deltaX) + (deltaY) * (deltaY) + (deltaZ) * (deltaZ));
                 const double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
                 double factor = G * massj * distanceCubed;
                 accelerationX += factor * (deltaX);
@@ -174,7 +137,6 @@ int main(int argc, const char *argv[])
         }
         if (t % output_steps == 0)
                 {
-                    // TODO: save positions to row `t/output_steps` of output
                     for (size_t i = 0; i < n; i++)
                     {
                         output->data[(t / output_steps) * 3 * n + i * 3] = inputCopy->data[i * 7 + 1];
