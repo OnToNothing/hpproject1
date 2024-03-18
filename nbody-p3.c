@@ -59,7 +59,7 @@ void calculate_force(body* body1, body* body2) {
     double dx = body2->position[0] - body1->position[0];
     double dy = body2->position[1] - body1->position[1];
     double dz = body2->position[2] - body1->position[2];
-    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING;
     double dist = sqrt(dist_sq);
     double force_mag = G * body1->mass * body2->mass / dist_sq;
 
@@ -81,7 +81,7 @@ void updateForces(body* bodies, size_t n) {
         bodies[i].force[0] = bodies[i].force[1] = bodies[i].force[2] = 0.0;
     }
 
-    #pragma omp parallel for collapse(2) shared(bodies, n)
+    
     for (size_t i = 0; i < n - 1; i++) {
         for (size_t j = i + 1; j < n; j++) {
             calculate_force(&bodies[i], &bodies[j]);
@@ -182,33 +182,25 @@ int main(int argc, const char *argv[])
         output->data[i * 3 + 2] = input->data[i * 7 + 3]; 
     }
 
-    #pragma omp parallel for
-for (size_t i = 0; i < n; i++) {
-    for (size_t d = 0; d < 3; d++) {
-        // Convert initial forces to accelerations and apply half the timestep's acceleration to the velocity
-        double acceleration = bodies[i].force[d] / bodies[i].mass;
-        bodies[i].velocity[d] += acceleration * time_step ;
-    }
-}
-size_t outputRow = 0;
+ 
+size_t outputRow = 1;
 #pragma omp parallel for
 for (size_t step = 1; step < num_steps; step++) {
-    for (size_t i = 0; i < n; i++) {
+    // Force update based on new positions
+    updateForces(bodies, n);
+
+   for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            double newAcceleration = bodies[i].force[d] / bodies[i].mass;
+            bodies[i].velocity[d] +=  newAcceleration * time_step;
+        }
+    }
+    
+        for (size_t i = 0; i < n; i++) {
         for (size_t d = 0; d < 3; d++) {
             // Update position based on velocity
             bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
             }
-    }
-
-    // Force update based on new positions
-    updateForces(bodies, n);
-
-    // Final velocity update using the newly calculated forces (accelerations)
-    for (size_t i = 0; i < n; i++) {
-        for (size_t d = 0; d < 3; d++) {
-            double newAcceleration = bodies[i].force[d] / bodies[i].mass;
-            bodies[i].velocity[d] += newAcceleration * time_step ;
-        }
     }
 
     // Save positions to the output matrix at specified intervals
