@@ -125,7 +125,9 @@ int main(int argc, const char *argv[])
     }
     Matrix *inputCopy = matrix_copy(input);
     
-    #pragma omp parallel for schedule(dynamic) num_threads(num_threads) default(none) shared(inputCopy, output, n, num_steps, time_step, output_steps)
+    #pragma omp parallel for schedule(dynamic) num_threads(num_threads) \
+    default(none) shared(inputCopy, output, n, num_steps, time_step, output_steps) 
+
     for (size_t t = 1; t < num_steps; t++)
     {
         for (size_t i = 0; i < n; i++)
@@ -192,9 +194,13 @@ int main(int argc, const char *argv[])
     printf("%f secs\n", time);
 
     // save results
-    // matrix_to_npy_path(argv[5], output);
+    matrix_to_npy_path(argv[5], output);
 
     // cleanup
+
+    matrix_free(input);
+    matrix_free(output);
+    matrix_free(inputCopy);
 
     return 0;
 }
