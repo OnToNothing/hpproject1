@@ -40,32 +40,99 @@
 #include "matrix.h"
 #include "util.h"
 
+
+typedef struct {
+     double position[3];
+     double velocity[3];
+     double force[3];
+     double mass;
+} body;
+
+
 // Gravitational Constant in N m^2 / kg^2 or m^3 / kg / s^2
 #define G 6.6743015e-11
 
 // Softening factor to reduce divide-by-near-zero effects
 #define SOFTENING 1e-9
 
+void calculate_force(body* body1, body* body2) {
+    double dx = body2->position[0] - body1->position[0];
+    double dy = body2->position[1] - body1->position[1];
+    double dz = body2->position[2] - body1->position[2];
+    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+    double dist = sqrt(dist_sq);
+    double force_mag = G * body1->mass * body2->mass / dist_sq;
 
-int main(int argc, const char* argv[]) {
+    double fx = force_mag * dx / dist;
+    double fy = force_mag * dy / dist;
+    double fz = force_mag * dz / dist;
+
+    body1->force[0] += fx;
+    body1->force[1] += fy;
+    body1->force[2] += fz;
+    body2->force[0] -= fx;
+    body2->force[1] -= fy;
+    body2->force[2] -= fz;
+}
+
+void updateForces(body* bodies, size_t n) {
+   #pragma omp parallel for shared(bodies, n)
+    for (size_t i = 0; i < n; i++) {
+        bodies[i].force[0] = bodies[i].force[1] = bodies[i].force[2] = 0.0;
+    }
+
+    #pragma omp parallel for collapse(2) shared(bodies, n)
+    for (size_t i = 0; i < n - 1; i++) {
+        for (size_t j = i + 1; j < n; j++) {
+            calculate_force(&bodies[i], &bodies[j]);
+        }
+    }
+}
+
+int main(int argc, const char *argv[])
+{
     // parse arguments
-    if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }
+    if (argc != 6 && argc != 7)
+    {
+        fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]);
+        return 1;
+    }
     double time_step = atof(argv[1]), total_time = atof(argv[2]);
-    if (time_step <= 0 || total_time <= 0 || time_step > total_time) { fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n"); return 1; }
+    if (time_step <= 0 || total_time <= 0 || time_step > total_time)
+    {
+        fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n");
+        return 1;
+    }
     size_t num_outputs = atoi(argv[3]);
-    if (num_outputs <= 0) { fprintf(stderr, "outputs-per-body must be positive\n"); return 1; }
-    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity()/2; // TODO: you may choose to adjust the default value
-    if (num_threads <= 0) { fprintf(stderr, "num-threads must be positive\n"); return 1; }
-    Matrix* input = matrix_from_npy_path(argv[4]);
-    if (input == NULL) { perror("error reading input"); return 1; }
-    if (input->cols != 7) { fprintf(stderr, "input.npy must have 7 columns\n"); return 1; }
+    if (num_outputs <= 0)
+    {
+        fprintf(stderr, "outputs-per-body must be positive\n");
+        return 1;
+    }
+    Matrix *input = matrix_from_npy_path(argv[4]);
+    if (input == NULL)
+    {
+        perror("error reading input");
+        return 1;
+    }
+    if (input->cols != 7)
+    {
+        fprintf(stderr, "input.npy must have 7 columns\n");
+        return 1;
+    }
     size_t n = input->rows;
-    if (n == 0) { fprintf(stderr, "input.npy must have at least 1 row\n"); return 1; }
-    if (num_threads > n) { num_threads = n; }
+    if (n == 0)
+    {
+        fprintf(stderr, "input.npy must have at least 1 row\n");
+        return 1;
+    }
     size_t num_steps = (size_t)(total_time / time_step + 0.5);
-    if (num_steps < num_outputs) { num_outputs = 1; }
-    size_t output_steps = num_steps/num_outputs;
-    num_outputs = (num_steps+output_steps-1)/output_steps;
+    if (num_steps < num_outputs)
+    {
+        num_outputs = 1;
+    }
+    size_t output_steps = num_steps / num_outputs;
+    num_outputs = (num_steps + output_steps - 1) / output_steps;
 
     // variables available now:
     //   time_step    number of seconds between each time point
@@ -73,14 +140,90 @@ int main(int argc, const char* argv[]) {
     //   num_steps    number of time steps to simulate (more useful than total_time)
     //   num_outputs  number of times the position will be output for all bodies
     //   output_steps number of steps between each output of the position
-    //   num_threads  number of threads to use
     //   input        n-by-7 Matrix of input data
     //   n            number of bodies to simulate
+
+    
+    
+    // argument for number of threads
+    int num_threads = omp_get_max_threads(); // Use maximum available by default
+        if (argc == 7) {
+    num_threads = atoi(argv[6]);
+    omp_set_num_threads(num_threads);
+}
+
+    
 
     // start the clock
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
+    // allocate output matrix as a 3n-by-num_outputs matrix
+    Matrix *output = matrix_create_raw(num_outputs, 3 * n);
+
+    body* bodies = (body*)malloc(sizeof(body) * n);
+    for (size_t i = 0; i < n; i++) {
+        bodies[i].position[0] = input->data[i * 7 + 1];
+        bodies[i].position[1] = input->data[i * 7 + 2];
+        bodies[i].position[2] = input->data[i * 7 + 3];
+        bodies[i].velocity[0] = input->data[i * 7 + 4];
+        bodies[i].velocity[1] = input->data[i * 7 + 5];
+        bodies[i].velocity[2] = input->data[i * 7 + 6];
+        bodies[i].mass = input->data[i * 7 + 0];
+    }
+
+    
+
+    // make row 0 the iniitial position
+    for (size_t i = 0; i < n; i++)
+    {
+        output->data[i * 3] = input->data[i * 7 + 1];
+        output->data[i * 3 + 1] = input->data[i * 7 + 2];
+        output->data[i * 3 + 2] = input->data[i * 7 + 3]; 
+    }
+
+    #pragma omp parallel for
+for (size_t i = 0; i < n; i++) {
+    for (size_t d = 0; d < 3; d++) {
+        // Convert initial forces to accelerations and apply half the timestep's acceleration to the velocity
+        double acceleration = bodies[i].force[d] / bodies[i].mass;
+        bodies[i].velocity[d] += acceleration * time_step ;
+    }
+}
+size_t outputRow = 0;
+for (size_t step = 1; step < num_steps; step++) {
+    #pragma omp parallel for
+    for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            // Update position based on velocity
+            bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
+            }
+    }
+
+    // Force update based on new positions
+    updateForces(bodies, n);
+
+    // Final velocity update using the newly calculated forces (accelerations)
+    for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            double newAcceleration = bodies[i].force[d] / bodies[i].mass;
+            bodies[i].velocity[d] += newAcceleration * time_step ;
+        }
+    }
+
+    // Save positions to the output matrix at specified intervals
+    if (step % output_steps == 0 || step == num_steps - 1) {
+        for (size_t i = 0; i < n; i++) {
+             size_t baseIndex = (outputRow * 3 * n) + (i * 3);
+            output->data[baseIndex + 0] = bodies[i].position[0];
+            output->data[baseIndex + 1] = bodies[i].position[1];
+            output->data[baseIndex + 2] = bodies[i].position[2];
+        }
+        outputRow++; // Move to the next row only after filling the current row.
+    }
+}
+
+        
 
     // get the end and computation time
     clock_gettime(CLOCK_MONOTONIC, &end);
@@ -88,10 +231,12 @@ int main(int argc, const char* argv[]) {
     printf("%f secs\n", time);
 
     // save results
-    //matrix_to_npy_path(argv[5], output);
+    matrix_to_npy_path(argv[5], output);
 
     // cleanup
-
+    matrix_free(input);
+    matrix_free(output);
+    free(bodies);
 
     return 0;
 }

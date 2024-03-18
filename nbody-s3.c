@@ -145,10 +145,15 @@ int main(int argc, const char *argv[])
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
-    // allocate output matrix as a 3n-by-num_outputs matrix
+    
     Matrix *output = matrix_create_raw(num_outputs, 3 * n);
 
     body* bodies = (body*)malloc(sizeof(body) * n);
+        if (bodies == NULL) {
+    fprintf(stderr, "Failed to allocate memory for bodies.\n");
+    return 1; // Exit if memory allocation fails
+}
+
     for (size_t i = 0; i < n; i++) {
         bodies[i].position[0] = input->data[i * 7 + 1];
         bodies[i].position[1] = input->data[i * 7 + 2];
@@ -170,16 +175,10 @@ int main(int argc, const char *argv[])
         
     }
     
-for (size_t i = 0; i < n; i++) {
-    for (size_t d = 0; d < 3; d++) {
-        // Convert initial forces to accelerations and apply half the timestep's acceleration to the velocity
-        double acceleration = bodies[i].force[d] / bodies[i].mass;
-        bodies[i].velocity[d] += acceleration * (time_step / 2.0);
-    }
-}
 
-size_t outputIndex = 0;
-for (size_t step = 0; step < num_steps; step++) {
+
+size_t outputRow = 0;
+for (size_t step = 1; step < num_steps; step++) {
     for (size_t i = 0; i < n; i++) {
         for (size_t d = 0; d < 3; d++) {
             // Update position based on velocity
@@ -194,20 +193,23 @@ for (size_t step = 0; step < num_steps; step++) {
     for (size_t i = 0; i < n; i++) {
         for (size_t d = 0; d < 3; d++) {
             double newAcceleration = bodies[i].force[d] / bodies[i].mass;
-            bodies[i].velocity[d] += newAcceleration * (time_step / 2.0);
+            bodies[i].velocity[d] +=  newAcceleration * time_step;
         }
     }
-
+    
+     
     // Save positions to the output matrix at specified intervals
     if (step % output_steps == 0 || step == num_steps - 1) {
         for (size_t i = 0; i < n; i++) {
-            output->data[outputIndex + i * 3 + 0] = bodies[i].position[0];
-            output->data[outputIndex + i * 3 + 1] = bodies[i].position[1];
-            output->data[outputIndex + i * 3 + 2] = bodies[i].position[2];
+            size_t baseIndex = (outputRow * 3 * n) + (i * 3);
+            output->data[baseIndex + 0] = bodies[i].position[0];
+            output->data[baseIndex + 1] = bodies[i].position[1];
+            output->data[baseIndex + 2] = bodies[i].position[2];
         }
-        outputIndex += 3 * n;
+        outputRow++; // Move to the next row only after filling the current row.
     }
 }
+
 
         
 
@@ -226,3 +228,4 @@ for (size_t step = 0; step < num_steps; step++) {
 
     return 0;
 }
+
