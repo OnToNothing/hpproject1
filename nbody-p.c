@@ -34,9 +34,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-
-#include <omp.h>
-
+#include <math.h>
 #include "matrix.h"
 #include "util.h"
 
@@ -48,58 +46,23 @@
 
 int main(int argc, const char *argv[])
 {
-    // parse arguments
-    if (argc != 6 && argc != 7)
-    {
-        fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]);
-        return 1;
-    }
+    if (argc != 6 && argc != 7) { fprintf(stderr, "usage: %s time-step total-time outputs-per-body input.npy output.npy [num-threads]\n", argv[0]); return 1; }
     double time_step = atof(argv[1]), total_time = atof(argv[2]);
-    if (time_step <= 0 || total_time <= 0 || time_step > total_time)
-    {
-        fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n");
-        return 1;
-    }
+    if (time_step <= 0 || total_time <= 0 || time_step > total_time) { fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n"); return 1; }
     size_t num_outputs = atoi(argv[3]);
-    if (num_outputs <= 0)
-    {
-        fprintf(stderr, "outputs-per-body must be positive\n");
-        return 1;
-    }
-    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity() / 2; // TODO: you may choose to adjust the default value
-    if (num_threads <= 0)
-    {
-        fprintf(stderr, "num-threads must be positive\n");
-        return 1;
-    }
-    Matrix *input = matrix_from_npy_path(argv[4]);
-    if (input == NULL)
-    {
-        perror("error reading input");
-        return 1;
-    }
-    if (input->cols != 7)
-    {
-        fprintf(stderr, "input.npy must have 7 columns\n");
-        return 1;
-    }
+    if (num_outputs <= 0) { fprintf(stderr, "outputs-per-body must be positive\n"); return 1; }
+    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity()/2; 
+    if (num_threads <= 0) { fprintf(stderr, "num-threads must be positive\n"); return 1; }
+    Matrix* input = matrix_from_npy_path(argv[4]);
+    if (input == NULL) { perror("error reading input"); return 1; }
+    if (input->cols != 7) { fprintf(stderr, "input.npy must have 7 columns\n"); return 1; }
     size_t n = input->rows;
-    if (n == 0)
-    {
-        fprintf(stderr, "input.npy must have at least 1 row\n");
-        return 1;
-    }
-    if (num_threads > n)
-    {
-        num_threads = n;
-    }
+    if (n == 0) { fprintf(stderr, "input.npy must have at least 1 row\n"); return 1; }
+    if (num_threads > n) { num_threads = n; }
     size_t num_steps = (size_t)(total_time / time_step + 0.5);
-    if (num_steps < num_outputs)
-    {
-        num_outputs = 1;
-    }
-    size_t output_steps = num_steps / num_outputs;
-    num_outputs = (num_steps + output_steps - 1) / output_steps;
+    if (num_steps < num_outputs) { num_outputs = 1; }
+    size_t output_steps = num_steps/num_outputs;
+    num_outputs = (num_steps+output_steps-1)/output_steps;
 
     // variables available now:
     //   time_step    number of seconds between each time point
@@ -107,7 +70,6 @@ int main(int argc, const char *argv[])
     //   num_steps    number of time steps to simulate (more useful than total_time)
     //   num_outputs  number of times the position will be output for all bodies
     //   output_steps number of steps between each output of the position
-    //   num_threads  number of threads to use
     //   input        n-by-7 Matrix of input data
     //   n            number of bodies to simulate
 
@@ -115,70 +77,82 @@ int main(int argc, const char *argv[])
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
+    // allocate output matrix as a 3n-by-num_outputs matrix
     Matrix *output = matrix_create_raw(num_outputs, 3 * n);
 
+    // make row 0 the iniitial position
     for (size_t i = 0; i < n; i++)
     {
         output->data[i * 3] = input->data[i * 7 + 1];
         output->data[i * 3 + 1] = input->data[i * 7 + 2];
         output->data[i * 3 + 2] = input->data[i * 7 + 3];
+        
     }
     Matrix *inputCopy = matrix_copy(input);
-    
-    #pragma omp parallel for schedule(dynamic) num_threads(num_threads) \
-    default(none) shared(inputCopy, output, n, num_steps, time_step, output_steps) 
+    // run the simulation
+    // MAKE INPUT DATA USABLE BY COPYING IT TO A NEW ARRAY
 
-   for (size_t t = 1; t < num_steps; t++)
+    // HAVE INDEXED I AND J LOOPS TO CALL SUPERPOSITION PRINCIPLE
+    // CALL SUPERPOSITION PRINCIPLE TO GET THE FORCE
+    // CALL COMPUTE VELOCITY TO GET THE VELOCITY
+    // UPDATE THE POSITION OF EACH BODY
+    // PERIODICALLY COPY THE POSITION TO THE OUTPUT MATRIX
+    // if i == j then skip the iteration
+    // FREE THE MEMORY
+#pragma omp simd
+for (size_t t = 1; t < num_steps; t++)
+{
+    #pragma parallel for default(none) shared(inputCopy, n, time_step, output, output_steps, num_steps) schedule(static) num_threads(8)
+    for (size_t i = 0; i < n; i++)
+    {
+        double xi = inputCopy->data[i * 7 + 1];
+        double yi = inputCopy->data[i * 7 + 2];
+        double zi = inputCopy->data[i * 7 + 3];
+        double accelerationX = 0;
+        double accelerationY = 0;
+        double accelerationZ = 0;
+        
+        #pragma omp simd reduction(+:accelerationX,accelerationY,accelerationZ)
+        for (size_t j = 0; j < n; j++)
+        {
+            if (i == j)
+            {
+                continue;
+            }
+            double massj = inputCopy->data[j * 7];
+            double xj = inputCopy->data[j * 7 + 1];
+            double yj = inputCopy->data[j * 7 + 2];
+            double zj = inputCopy->data[j * 7 + 3];
+            double deltaX = xj - xi;
+            double deltaY = yj - yi;
+            double deltaZ = zj - zi;
+            double euclideanDistance = 1 / sqrt(SOFTENING + (deltaX) * (deltaX) + (deltaY) * (deltaY) + (deltaZ) * (deltaZ));
+            double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
+            double factor = G * massj * distanceCubed;
+            accelerationX += factor * deltaX;
+            accelerationY += factor * deltaY;
+            accelerationZ += factor * deltaZ;
+        }
+        
+        inputCopy->data[i * 7 + 4] += accelerationX * time_step;
+        inputCopy->data[i * 7 + 5] += accelerationY * time_step;
+        inputCopy->data[i * 7 + 6] += accelerationZ * time_step;
+        inputCopy->data[i * 7 + 1] += inputCopy->data[i * 7 + 4] * time_step;
+        inputCopy->data[i * 7 + 2] += inputCopy->data[i * 7 + 5] * time_step;
+        inputCopy->data[i * 7 + 3] += inputCopy->data[i * 7 + 6] * time_step;
+    }
+
+    if (t % output_steps == 0)
     {
         for (size_t i = 0; i < n; i++)
         {
-            double xi = inputCopy->data[i * 7 + 1];
-            double yi = inputCopy->data[i * 7 + 2];
-            double zi = inputCopy->data[i * 7 + 3];
-            double accelerationX = 0;
-            double accelerationY = 0;
-            double accelerationZ = 0;
-            for (size_t j = 0; j < n; j++)
-            {
-                if (i == j)
-                {
-                    continue;
-                }
-                //double massi = inputCopy->data[i * 7];
-                double massj = inputCopy->data[j * 7];
-                double xj = inputCopy->data[j * 7 + 1];
-                double yj = inputCopy->data[j * 7 + 2];
-                double zj = inputCopy->data[j * 7 + 3];
-                double deltaX = xj - xi;
-                double deltaY = yj - yi;
-                double deltaZ = zj - zi;
-                double euclideanDistance = 1 / sqrt(SOFTENING + (deltaX) * (deltaX) + (deltaY) * (deltaY) + (deltaZ) * (deltaZ));
-                const double distanceCubed = euclideanDistance * euclideanDistance * euclideanDistance;
-                double factor = G * massj * distanceCubed;
-                accelerationX += factor * (deltaX);
-                accelerationY += factor * (deltaY);
-                accelerationZ += factor * (deltaZ);
-            }
-            inputCopy->data[i * 7 + 4] += accelerationX * time_step;
-            inputCopy->data[i * 7 + 5] += accelerationY * time_step;
-            inputCopy->data[i * 7 + 6] += accelerationZ * time_step;
-            inputCopy->data[i * 7 + 1] += inputCopy->data[i * 7 + 4] * time_step;
-            inputCopy->data[i * 7 + 2] += inputCopy->data[i * 7 + 5] * time_step;
-            inputCopy->data[i * 7 + 3] += inputCopy->data[i * 7 + 6] * time_step;
+            output->data[(t / output_steps) * 3 * n + i * 3] = inputCopy->data[i * 7 + 1];
+            output->data[(t / output_steps) * 3 * n + i * 3 + 1] = inputCopy->data[i * 7 + 2];
+            output->data[(t / output_steps) * 3 * n + i * 3 + 2] = inputCopy->data[i * 7 + 3];
         }
-        if (t % output_steps == 0)
-                {
-                    for (size_t i = 0; i < n; i++)
-                    {
-                        output->data[(t / output_steps) * 3 * n + i * 3] = inputCopy->data[i * 7 + 1];
-                        output->data[(t / output_steps) * 3 * n + i * 3 + 1] = inputCopy->data[i * 7 + 2];
-                        output->data[(t / output_steps) * 3 * n + i * 3 + 2] = inputCopy->data[i * 7 + 3];
-
-                        
-                    }
-
-                }
     }
+}
+
 
     if (num_steps % output_steps == 0)
     {
@@ -200,10 +174,9 @@ int main(int argc, const char *argv[])
     matrix_to_npy_path(argv[5], output);
 
     // cleanup
-
     matrix_free(input);
-    matrix_free(output);
     matrix_free(inputCopy);
+    matrix_free(output);
 
     return 0;
 }
