@@ -2,7 +2,7 @@
  * Runs a simulation of the n-body problem in 3D.
  * 
  * To compile the program:
- *   gcc -Wall -O3 -march=native nbody-s3.c matrix.c util.c -o nbody-s3 -lm
+ *   gcc-13 -Wall -O3 -march=native nbody-s3.c matrix.c util.c -o nbody-s3 -lm
  * 
  * To run the program:
  *   ./nbody-s3 time-step total-time outputs-per-body input.npy output.npy
@@ -53,7 +53,7 @@ void calculate_force(body* body1, body* body2) {
     double dx = body2->position[0] - body1->position[0];
     double dy = body2->position[1] - body1->position[1];
     double dz = body2->position[2] - body1->position[2];
-    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+    double dist_sq = dx*dx + dy*dy + dz*dz + SOFTENING;
     double dist = sqrt(dist_sq);
     double force_mag = G * body1->mass * body2->mass / dist_sq;
 
@@ -177,15 +177,8 @@ int main(int argc, const char *argv[])
     
 
 
-size_t outputRow = 0;
+size_t outputRow = 1;
 for (size_t step = 1; step < num_steps; step++) {
-    for (size_t i = 0; i < n; i++) {
-        for (size_t d = 0; d < 3; d++) {
-            // Update position based on velocity
-            bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
-            }
-    }
-
     // Force update based on new positions
     updateForces(bodies, n);
 
@@ -196,8 +189,14 @@ for (size_t step = 1; step < num_steps; step++) {
             bodies[i].velocity[d] +=  newAcceleration * time_step;
         }
     }
-    
-     
+
+    for (size_t i = 0; i < n; i++) {
+        for (size_t d = 0; d < 3; d++) {
+            // Update position based on velocity
+            bodies[i].position[d] += bodies[i].velocity[d] * time_step;    
+            }
+    }
+
     // Save positions to the output matrix at specified intervals
     if (step % output_steps == 0 || step == num_steps - 1) {
         for (size_t i = 0; i < n; i++) {
