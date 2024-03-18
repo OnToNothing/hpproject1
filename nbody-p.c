@@ -128,7 +128,7 @@ int main(int argc, const char *argv[])
     #pragma omp parallel for schedule(dynamic) num_threads(num_threads) \
     default(none) shared(inputCopy, output, n, num_steps, time_step, output_steps) 
 
-    for (size_t t = 1; t < num_steps; t++)
+   for (size_t t = 1; t < num_steps; t++)
     {
         for (size_t i = 0; i < n; i++)
         {
@@ -144,7 +144,7 @@ int main(int argc, const char *argv[])
                 {
                     continue;
                 }
-                // double massi = inputCopy->data[i * 7];
+                //double massi = inputCopy->data[i * 7];
                 double massj = inputCopy->data[j * 7];
                 double xj = inputCopy->data[j * 7 + 1];
                 double yj = inputCopy->data[j * 7 + 2];
@@ -167,14 +167,17 @@ int main(int argc, const char *argv[])
             inputCopy->data[i * 7 + 3] += inputCopy->data[i * 7 + 6] * time_step;
         }
         if (t % output_steps == 0)
-        {
-            for (size_t i = 0; i < n; i++)
-            {
-                output->data[(t / output_steps) * 3 * n + i * 3] = inputCopy->data[i * 7 + 1];
-                output->data[(t / output_steps) * 3 * n + i * 3 + 1] = inputCopy->data[i * 7 + 2];
-                output->data[(t / output_steps) * 3 * n + i * 3 + 2] = inputCopy->data[i * 7 + 3];
-            }
-        }
+                {
+                    for (size_t i = 0; i < n; i++)
+                    {
+                        output->data[(t / output_steps) * 3 * n + i * 3] = inputCopy->data[i * 7 + 1];
+                        output->data[(t / output_steps) * 3 * n + i * 3 + 1] = inputCopy->data[i * 7 + 2];
+                        output->data[(t / output_steps) * 3 * n + i * 3 + 2] = inputCopy->data[i * 7 + 3];
+
+                        
+                    }
+
+                }
     }
 
     if (num_steps % output_steps == 0)

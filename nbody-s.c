@@ -2,7 +2,7 @@
  * Runs a simulation of the n-body problem in 3D.
  *
  * To compile the program:
- *   gcc -Wall -Ofast -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
+ *   gcc-13 -Wall -Ofast -march=native nbody-s.c matrix.c util.c -o nbody-s -lm
  *
  * To run the program:
  *   ./nbody-s time-step total-time outputs-per-body input.npy output.npy
@@ -49,7 +49,7 @@ int main(int argc, const char *argv[])
     if (time_step <= 0 || total_time <= 0 || time_step > total_time) { fprintf(stderr, "time-step and total-time must be positive with total-time > time-step\n"); return 1; }
     size_t num_outputs = atoi(argv[3]);
     if (num_outputs <= 0) { fprintf(stderr, "outputs-per-body must be positive\n"); return 1; }
-    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity()/2; // TODO: you may choose to adjust the default value
+    size_t num_threads = argc == 7 ? atoi(argv[6]) : get_num_cores_affinity()/2; 
     if (num_threads <= 0) { fprintf(stderr, "num-threads must be positive\n"); return 1; }
     Matrix* input = matrix_from_npy_path(argv[4]);
     if (input == NULL) { perror("error reading input"); return 1; }

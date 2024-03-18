@@ -2,7 +2,7 @@
  * Runs a simulation of the n-body problem in 3D.
  * 
  * To compile the program:
- *   gcc -Wall -fopenmp -O3 -march=native nbody-p3.c matrix.c util.c -o nbody-p3 -lm
+ *   gcc-13 -Wall -fopenmp -O3 -march=native nbody-p3.c matrix.c util.c -o nbody-p3 -lm
  * 
  * To run the program:
  *   ./nbody-p3 time-step total-time outputs-per-body input.npy output.npy [opt: num-threads]
@@ -191,8 +191,8 @@ for (size_t i = 0; i < n; i++) {
     }
 }
 size_t outputRow = 0;
+#pragma omp parallel for
 for (size_t step = 1; step < num_steps; step++) {
-    #pragma omp parallel for
     for (size_t i = 0; i < n; i++) {
         for (size_t d = 0; d < 3; d++) {
             // Update position based on velocity
