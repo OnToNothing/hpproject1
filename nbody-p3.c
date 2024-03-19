@@ -76,7 +76,7 @@ void calculate_force(body* body1, body* body2) {
 }
 
 void updateForces(body* bodies, size_t n) {
-   #pragma omp parallel for shared(bodies, n)
+   
     for (size_t i = 0; i < n; i++) {
         bodies[i].force[0] = bodies[i].force[1] = bodies[i].force[2] = 0.0;
     }
@@ -162,6 +162,8 @@ int main(int argc, const char *argv[])
     Matrix *output = matrix_create_raw(num_outputs, 3 * n);
 
     body* bodies = (body*)malloc(sizeof(body) * n);
+
+    #pragma omp parallel for schedule(dynamic) num_threads(num_threads)
     for (size_t i = 0; i < n; i++) {
         bodies[i].position[0] = input->data[i * 7 + 1];
         bodies[i].position[1] = input->data[i * 7 + 2];
@@ -184,7 +186,7 @@ int main(int argc, const char *argv[])
 
  
 size_t outputRow = 1;
-#pragma omp parallel for
+
 for (size_t step = 1; step < num_steps; step++) {
     // Force update based on new positions
     updateForces(bodies, n);
@@ -205,6 +207,8 @@ for (size_t step = 1; step < num_steps; step++) {
 
     // Save positions to the output matrix at specified intervals
     if (step % output_steps == 0 || step == num_steps - 1) {
+
+        #pragma omp critical
         for (size_t i = 0; i < n; i++) {
              size_t baseIndex = (outputRow * 3 * n) + (i * 3);
             output->data[baseIndex + 0] = bodies[i].position[0];
